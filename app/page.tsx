@@ -1,103 +1,145 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { v4 as uuidv4 } from 'uuid';
+
+const userColors = [
+	'#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
+	'#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#84cc16'
+];
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+	const [userName, setUserName] = useState('');
+	const [sessionId, setSessionId] = useState('');
+	const [theme, setTheme] = useState('light');
+	const router = useRouter();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+	useEffect(() => {
+		// Check for saved theme or system preference
+		const savedTheme = localStorage.getItem('theme') || 
+			(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+		setTheme(savedTheme);
+		document.documentElement.setAttribute('data-theme', savedTheme);
+	}, []);
+
+	const toggleTheme = () => {
+		const newTheme = theme === 'light' ? 'dark' : 'light';
+		setTheme(newTheme);
+		localStorage.setItem('theme', newTheme);
+		document.documentElement.setAttribute('data-theme', newTheme);
+	};
+
+	const handleCreateSession = () => {
+		if (!userName.trim()) {
+			alert('Please enter your name');
+			return;
+		}
+		
+		const newSessionId = uuidv4().substring(0, 8);
+		const userColor = userColors[Math.floor(Math.random() * userColors.length)];
+		
+		router.push(`/editor/${newSessionId}?name=${encodeURIComponent(userName)}&color=${encodeURIComponent(userColor)}`);
+	};
+
+	const handleJoinSession = () => {
+		if (!userName.trim()) {
+			alert('Please enter your name');
+			return;
+		}
+		
+		if (!sessionId.trim()) {
+			alert('Please enter a session ID');
+			return;
+		}
+		
+		const userColor = userColors[Math.floor(Math.random() * userColors.length)];
+		
+		router.push(`/editor/${sessionId}?name=${encodeURIComponent(userName)}&color=${encodeURIComponent(userColor)}`);
+	};
+
+	return (
+		<div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--bg-secondary)' }}>
+			<div className="frappe-card p-8 w-full max-w-md relative">
+				{/* Theme Toggle */}
+				<button
+					onClick={toggleTheme}
+					className="frappe-button frappe-button-secondary absolute top-4 right-4 p-2"
+					title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+				>
+					{theme === 'light' ? '🌙' : '☀️'}
+				</button>
+
+				<div className="text-center mb-8">
+					<h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+						Collaborative Markdown Editor
+					</h1>
+					<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+						Real-time collaboration with live cursors and preview
+					</p>
+				</div>
+				
+				<div className="space-y-6">
+					<div>
+						<label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+							Your Name
+						</label>
+						<input
+							type="text"
+							value={userName}
+							onChange={(e) => setUserName(e.target.value)}
+							className="frappe-input"
+							placeholder="Enter your name"
+							onKeyPress={(e) => e.key === 'Enter' && handleCreateSession()}
+						/>
+					</div>
+					
+					<button
+						onClick={handleCreateSession}
+						className="frappe-button frappe-button-primary w-full py-3 text-base font-medium"
+					>
+						🚀 Create New Session
+					</button>
+					
+					<div className="relative">
+						<div className="absolute inset-0 flex items-center">
+							<div className="w-full border-t" style={{ borderColor: 'var(--border-primary)' }} />
+						</div>
+						<div className="relative flex justify-center text-sm">
+							<span className="px-3" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+								or join existing
+							</span>
+						</div>
+					</div>
+					
+					<div>
+						<label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+							Session ID
+						</label>
+						<input
+							type="text"
+							value={sessionId}
+							onChange={(e) => setSessionId(e.target.value)}
+							className="frappe-input"
+							placeholder="Enter session ID to join"
+							onKeyPress={(e) => e.key === 'Enter' && handleJoinSession()}
+						/>
+					</div>
+					
+					<button
+						onClick={handleJoinSession}
+						className="frappe-button frappe-button-secondary w-full py-3 text-base font-medium"
+					>
+						🔗 Join Session
+					</button>
+				</div>
+
+				<div className="mt-8 text-center">
+					<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+						Built with Next.js, Socket.io & ❤️
+					</p>
+				</div>
+			</div>
+		</div>
+	);
 }
