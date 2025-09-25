@@ -1,4 +1,4 @@
-# 📝 Collaborative Markdown Editor
+# Collab-MD
 
 A real-time collaborative markdown editor built with Next.js, Socket.io, and TypeScript. Multiple users can edit documents simultaneously, see each other's cursors and text selections in real-time, and preview markdown with a beautiful Frappé-inspired UI.
 

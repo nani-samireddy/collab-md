@@ -30,7 +30,7 @@ app.prepare().then(() => {
 			// Initialize session if it doesn't exist
 			if (!sessions.has(sessionId)) {
 				sessions.set(sessionId, {
-					content: '# Welcome to Collaborative Markdown Editor\n\nStart editing...',
+					content: '# Welcome to Collab-MD\n\n**Real-time collaborative markdown editing** with live cursors and text selection.\n\n## Features\n\n- 🚀 **Real-time collaboration** - See changes instantly\n- 👥 **Live cursors** - Watch where others are typing\n- 🎨 **Text selection** - See what others have selected\n- 🌙 **Dark/Light mode** - Choose your preferred theme\n- 📱 **Responsive design** - Works on all devices\n\n## Getting Started\n\nStart typing to see the magic happen! Share this session with others to collaborate in real-time.\n\n---\n\n*Built with Next.js, Socket.io & TypeScript*',
 					users: new Map(),
 					cursors: new Map()
 				});

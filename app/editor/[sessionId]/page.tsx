@@ -2,9 +2,19 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { io, Socket } from 'socket.io-client';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { Moon, Sun, Copy, Eye, EyeOff, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { Toggle } from '@/components/ui/toggle';
 
 interface User {
 	id: string;
@@ -29,6 +39,8 @@ export default function EditorPage() {
 	const sessionId = params.sessionId as string;
 	const userName = searchParams.get('name');
 	const userColor = searchParams.get('color');
+	
+	const [joinName, setJoinName] = useState('');
 
 	const [socket, setSocket] = useState<Socket | null>(null);
 	const [content, setContent] = useState('');
@@ -36,21 +48,29 @@ export default function EditorPage() {
 	const [cursors, setCursors] = useState<Cursor[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
 	const [showPreview, setShowPreview] = useState(true);
-	const [theme, setTheme] = useState('light');
+	const { theme, setTheme } = useTheme();
 
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const cursorUpdateTimeoutRef = useRef<NodeJS.Timeout>();
 
-	useEffect(() => {
-		// Initialize theme
-		const savedTheme = localStorage.getItem('theme') || 'light';
-		setTheme(savedTheme);
-		document.documentElement.setAttribute('data-theme', savedTheme);
-	}, []);
+	const userColors = [
+		'#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
+		'#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#84cc16'
+	];
+
+	const handleJoinSession = () => {
+		if (!joinName.trim()) {
+			alert('Please enter your name');
+			return;
+		}
+		
+		const randomColor = userColors[Math.floor(Math.random() * userColors.length)];
+		const newUrl = `/editor/${sessionId}?name=${encodeURIComponent(joinName)}&color=${encodeURIComponent(randomColor)}`;
+		router.push(newUrl);
+	};
 
 	useEffect(() => {
 		if (!userName || !userColor) {
-			router.push('/');
 			return;
 		}
 
@@ -155,128 +175,111 @@ export default function EditorPage() {
 		}, 100);
 	}, [socket, isConnected, sessionId]);
 
-	const getCursorPosition = (position: number) => {
-		if (!textareaRef.current) return { top: 0, left: 0 };
+	const handleSelection = useCallback(() => {
+		handleCursorMove();
+	}, [handleCursorMove]);
 
+	// Helper function to get text metrics
+	const getTextMetrics = () => {
+		if (!textareaRef.current) return null;
+		
 		const textarea = textareaRef.current;
 		const style = window.getComputedStyle(textarea);
-		const lineHeight = parseInt(style.lineHeight) || 24;
-		const fontSize = parseInt(style.fontSize) || 14;
-		const paddingTop = parseInt(style.paddingTop) || 0;
-		const paddingLeft = parseInt(style.paddingLeft) || 0;
+		
+		// Create a canvas to measure character width accurately
+		const canvas = document.createElement('canvas');
+		const context = canvas.getContext('2d');
+		if (!context) return null;
+		
+		context.font = style.font;
+		const charWidth = context.measureText('M').width; // Use 'M' as it's typically the widest character
+		
+		return {
+			fontSize: parseInt(style.fontSize) || 14,
+			lineHeight: parseFloat(style.lineHeight) || parseInt(style.fontSize) * 1.6,
+			paddingTop: parseInt(style.paddingTop) || 0,
+			paddingLeft: parseInt(style.paddingLeft) || 0,
+			charWidth,
+			scrollTop: textarea.scrollTop,
+			scrollLeft: textarea.scrollLeft
+		};
+	};
 
-		// Create a temporary div to measure text
-		const div = document.createElement('div');
-		div.style.position = 'absolute';
-		div.style.visibility = 'hidden';
-		div.style.whiteSpace = 'pre-wrap';
-		div.style.wordWrap = 'break-word';
-		div.style.font = style.font;
-		div.style.width = textarea.clientWidth - paddingLeft * 2 + 'px';
-		document.body.appendChild(div);
+	const getCursorPosition = (position: number) => {
+		const metrics = getTextMetrics();
+		if (!metrics || !textareaRef.current) return { top: 0, left: 0 };
 
-		const textBeforeCursor = content.substring(0, position);
-		div.textContent = textBeforeCursor;
-
-		const range = document.createRange();
-		const textNode = div.firstChild;
-		if (textNode) {
-			range.setStart(textNode, textBeforeCursor.length);
-			range.setEnd(textNode, textBeforeCursor.length);
-			const rect = range.getBoundingClientRect();
-			const divRect = div.getBoundingClientRect();
-
-			const top = rect.top - divRect.top + paddingTop;
-			const left = rect.left - divRect.left + paddingLeft;
-
-			document.body.removeChild(div);
-			return { top, left };
-		}
-
-		document.body.removeChild(div);
-
-		// Fallback to line-based calculation
+		const textBeforeCursor = content.substring(0, Math.min(position, content.length));
 		const lines = textBeforeCursor.split('\n');
-		const top = (lines.length - 1) * lineHeight + paddingTop;
-		const left = (lines[lines.length - 1]?.length || 0) * (fontSize * 0.6) + paddingLeft;
+		const lineNumber = lines.length - 1;
+		const columnNumber = lines[lineNumber]?.length || 0;
+
+		const top = lineNumber * metrics.lineHeight + metrics.paddingTop - metrics.scrollTop;
+		const left = columnNumber * metrics.charWidth + metrics.paddingLeft - metrics.scrollLeft;
 
 		return { top, left };
 	};
 
 	const getSelectionRects = (start: number, end: number) => {
-		if (!textareaRef.current || start === end || start >= end) return [];
+		const metrics = getTextMetrics();
+		if (!metrics || !textareaRef.current || start === end || start >= end) return [];
 
-		const textarea = textareaRef.current;
-		const style = window.getComputedStyle(textarea);
-		const lineHeight = parseInt(style.lineHeight) || 24;
-		const fontSize = parseInt(style.fontSize) || 14;
-		const paddingTop = parseInt(style.paddingTop) || 0;
-		const paddingLeft = parseInt(style.paddingLeft) || 0;
-		const textareaWidth = textarea.clientWidth - paddingLeft * 2;
-		const textareaHeight = textarea.clientHeight - paddingTop * 2;
-
-		// Ensure start and end are within content bounds
 		const contentLength = content.length;
 		const safeStart = Math.max(0, Math.min(start, contentLength));
 		const safeEnd = Math.max(safeStart, Math.min(end, contentLength));
 
-		const textBeforeStart = content.substring(0, safeStart);
-		const selectedText = content.substring(safeStart, safeEnd);
+		if (safeStart === safeEnd) return [];
 
-		if (!selectedText) return [];
-
-		const allLines = content.split('\n');
-		const startLines = textBeforeStart.split('\n');
-		const startLineIndex = startLines.length - 1;
-		const startCharIndex = startLines[startLineIndex]?.length || 0;
-
-		const selectedLines = selectedText.split('\n');
+		const lines = content.split('\n');
 		const rects = [];
-		const charWidth = fontSize * 0.6; // More accurate character width estimation
 
-		for (let i = 0; i < selectedLines.length; i++) {
-			const currentLineIndex = startLineIndex + i;
-			const lineText = selectedLines[i];
-			const lineTop = currentLineIndex * lineHeight + paddingTop;
+		// Find start and end positions in terms of line and column
+		let currentPos = 0;
+		let startLine = 0, startCol = 0;
+		let endLine = 0, endCol = 0;
+		let foundStart = false, foundEnd = false;
 
-			// Skip if line is outside visible area
-			if (lineTop < 0 || lineTop > textareaHeight) continue;
+		for (let lineIndex = 0; lineIndex < lines.length && !foundEnd; lineIndex++) {
+			const lineLength = lines[lineIndex].length;
+			const lineEndPos = currentPos + lineLength;
 
-			let lineLeft = paddingLeft;
-			let lineWidth = 0;
-
-			if (selectedLines.length === 1) {
-				// Single line selection
-				lineLeft += startCharIndex * charWidth;
-				lineWidth = lineText.length * charWidth;
-			} else if (i === 0) {
-				// First line of multi-line selection
-				lineLeft += startCharIndex * charWidth;
-				const currentLine = allLines[currentLineIndex] || '';
-				const remainingChars = currentLine.length - startCharIndex;
-				lineWidth = remainingChars * charWidth;
-			} else if (i === selectedLines.length - 1) {
-				// Last line of multi-line selection
-				lineWidth = lineText.length * charWidth;
-			} else {
-				// Middle lines of multi-line selection
-				const currentLine = allLines[currentLineIndex] || '';
-				lineWidth = currentLine.length * charWidth;
+			// Find start position
+			if (!foundStart && safeStart <= lineEndPos) {
+				startLine = lineIndex;
+				startCol = safeStart - currentPos;
+				foundStart = true;
 			}
 
-			// Ensure selection doesn't go outside textarea bounds
-			const maxWidth = textareaWidth - (lineLeft - paddingLeft);
-			lineWidth = Math.min(lineWidth, maxWidth);
-			lineWidth = Math.max(lineWidth, 2); // Minimum width for visibility
+			// Find end position
+			if (foundStart && safeEnd <= lineEndPos) {
+				endLine = lineIndex;
+				endCol = safeEnd - currentPos;
+				foundEnd = true;
+			}
 
-			// Only add rect if it's within bounds
-			if (lineLeft >= paddingLeft && lineLeft < textareaWidth + paddingLeft && lineWidth > 0) {
-				rects.push({
-					top: Math.max(lineTop, paddingTop),
-					left: lineLeft,
-					width: lineWidth,
-					height: Math.min(lineHeight, textareaHeight - (lineTop - paddingTop))
-				});
+			currentPos = lineEndPos + 1; // +1 for the newline character
+		}
+
+		// Generate rectangles for each line in the selection
+		for (let lineIndex = startLine; lineIndex <= endLine; lineIndex++) {
+			const line = lines[lineIndex] || '';
+			let rectStartCol = lineIndex === startLine ? startCol : 0;
+			let rectEndCol = lineIndex === endLine ? endCol : line.length;
+
+			// Skip empty rectangles
+			if (rectStartCol >= rectEndCol && rectStartCol >= line.length) continue;
+
+			// Ensure we don't exceed line bounds
+			rectStartCol = Math.min(rectStartCol, line.length);
+			rectEndCol = Math.min(rectEndCol, line.length);
+
+			if (rectStartCol < rectEndCol || (rectStartCol === rectEndCol && rectEndCol < line.length)) {
+				const top = lineIndex * metrics.lineHeight + metrics.paddingTop - metrics.scrollTop;
+				const left = rectStartCol * metrics.charWidth + metrics.paddingLeft - metrics.scrollLeft;
+				const width = Math.max((rectEndCol - rectStartCol) * metrics.charWidth, 2); // Minimum width of 2px
+				const height = metrics.lineHeight;
+
+				rects.push({ top, left, width, height });
 			}
 		}
 
@@ -284,232 +287,276 @@ export default function EditorPage() {
 	};
 
 	const toggleTheme = () => {
-		const newTheme = theme === 'light' ? 'dark' : 'light';
-		setTheme(newTheme);
-		localStorage.setItem('theme', newTheme);
-		document.documentElement.setAttribute('data-theme', newTheme);
+		setTheme(theme === 'light' ? 'dark' : 'light');
 	};
 
 	const copySessionLink = () => {
-		// Create clean session URL without user parameters
 		const baseUrl = window.location.origin;
 		const sessionUrl = `${baseUrl}/editor/${sessionId}`;
 		navigator.clipboard.writeText(sessionUrl);
 
-		// Show a better notification
 		const notification = document.createElement('div');
 		notification.textContent = '✓ Session link copied!';
 		notification.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: var(--accent-success);
-      color: white;
-      padding: 12px 20px;
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-lg);
-      z-index: 1000;
-      font-size: 14px;
-      font-weight: 500;
-    `;
+			position: fixed;
+			top: 20px;
+			right: 20px;
+			background: #10b981;
+			color: white;
+			padding: 12px 20px;
+			border-radius: 8px;
+			box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+			z-index: 1000;
+			font-size: 14px;
+			font-weight: 500;
+		`;
 		document.body.appendChild(notification);
 		setTimeout(() => {
-			document.body.removeChild(notification);
+			if (document.body.contains(notification)) {
+				document.body.removeChild(notification);
+			}
 		}, 3000);
 	};
 
 	const getMarkdownHtml = () => {
-		if (!content.trim()) return '<p style="color: var(--text-muted)">Preview will appear here...</p>';
+		if (!content.trim()) return '<p style="color: #6b7280">Preview will appear here...</p>';
 
 		try {
 			const html = marked.parse(content);
 			return DOMPurify.sanitize(html);
 		} catch (error) {
-			return '<p style="color: var(--accent-danger)">Error rendering markdown</p>';
+			return '<p style="color: #ef4444">Error rendering markdown</p>';
 		}
 	};
 
 	if (!userName || !userColor) {
-		return null;
+		return (
+			<div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+				<Card className="w-full max-w-md relative">
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={toggleTheme}
+						className="absolute top-4 right-4"
+						title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+					>
+						{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+					</Button>
+
+					<CardHeader className="text-center">
+						<CardTitle className="text-2xl font-bold">Join Session</CardTitle>
+						<CardDescription>
+							Join session <Badge variant="secondary" className="font-mono text-xs">{sessionId}</Badge>
+						</CardDescription>
+					</CardHeader>
+
+					<CardContent className="space-y-6">
+						<div className="space-y-2">
+							<Label htmlFor="joinName">Your Name</Label>
+							<Input
+								id="joinName"
+								type="text"
+								value={joinName}
+								onChange={(e) => setJoinName(e.target.value)}
+								placeholder="Enter your name"
+								onKeyPress={(e) => e.key === 'Enter' && handleJoinSession()}
+							/>
+						</div>
+						
+						<Button
+							onClick={handleJoinSession}
+							className="w-full"
+							size="lg"
+						>
+							<Users className="mr-2 h-4 w-4" />
+							Join Session
+						</Button>
+						
+						<div className="text-center">
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => router.push('/')}
+								className="text-muted-foreground"
+							>
+								← Back to Home
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+		);
 	}
 
 	return (
-		<div className="min-h-screen" style={{ background: 'var(--bg-secondary)' }}>
-			{/* Header */}
-			<header className="frappe-card border-b-0 rounded-none px-6 py-4" style={{ borderBottom: '1px solid var(--border-primary)' }}>
-				<div className="flex items-center justify-between flex-wrap gap-4">
-					<div className="flex items-center space-x-4 flex-wrap">
-						<h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-							📝 Collaborative Editor
-						</h1>
-						<div className="flex items-center space-x-2 text-sm">
-							<span style={{ color: 'var(--text-muted)' }}>Session:</span>
-							<code className="px-2 py-1 rounded text-xs font-mono" style={{
-								background: 'var(--bg-tertiary)',
-								color: 'var(--text-primary)',
-								border: '1px solid var(--border-primary)'
-							}}>
+		<div className="min-h-screen bg-background">
+			<header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+				<div className="container flex h-14 items-center justify-between px-4">
+					<div className="flex items-center space-x-4">
+						<h1 className="text-lg font-semibold">Collab-MD</h1>
+						<div className="flex items-center space-x-2">
+							<Badge variant="secondary" className="font-mono text-xs">
 								{sessionId}
-							</code>
-							<button
+							</Badge>
+							<Button
+								variant="ghost"
+								size="sm"
 								onClick={copySessionLink}
-								className="frappe-button frappe-button-secondary text-xs px-2 py-1"
+								title="Copy session link"
 							>
-								📋 Copy Link
-							</button>
+								<Copy className="h-3 w-3" />
+							</Button>
 						</div>
 					</div>
 
-					<div className="flex items-center space-x-4 flex-wrap">
-						{/* Theme Toggle */}
-						<button
-							onClick={toggleTheme}
-							className="frappe-button frappe-button-secondary p-2"
-							title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-						>
-							{theme === 'light' ? '🌙' : '☀️'}
-						</button>
-
-						{/* Connection Status */}
+					<div className="flex items-center space-x-2">
 						<div className="flex items-center space-x-2">
-							<div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-							<span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-								{isConnected ? 'Connected' : 'Disconnected'}
-							</span>
-						</div>
-
-						{/* Online Users */}
-						<div className="flex items-center space-x-2">
-							<span className="text-xs" style={{ color: 'var(--text-muted)' }}>Online:</span>
+							<div className="flex items-center space-x-1">
+								<Users className="h-4 w-4 text-muted-foreground" />
+								<span className="text-sm text-muted-foreground">{users.length}</span>
+							</div>
 							<div className="flex space-x-1">
 								{users.map(user => (
-									<div
-										key={user.id}
-										className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-sm"
-										style={{ backgroundColor: user.color }}
-										title={user.name}
-									>
-										{user.name[0].toUpperCase()}
-									</div>
+									<Avatar key={user.id} className="h-6 w-6">
+										<AvatarFallback 
+											className="text-xs text-white"
+											style={{ backgroundColor: user.color }}
+											title={user.name}
+										>
+											{user.name[0].toUpperCase()}
+										</AvatarFallback>
+									</Avatar>
 								))}
 							</div>
 						</div>
 
-						{/* Preview Toggle */}
-						<button
-							onClick={() => setShowPreview(!showPreview)}
-							className={`frappe-button px-3 py-2 text-sm ${showPreview
-									? 'frappe-button-primary'
-									: 'frappe-button-secondary'
-								}`}
+						<Separator orientation="vertical" className="h-6" />
+
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={toggleTheme}
+							title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
 						>
-							{showPreview ? '👁️ Hide Preview' : '👁️ Show Preview'}
-						</button>
+							{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+						</Button>
+
+						<Toggle
+							pressed={showPreview}
+							onPressedChange={setShowPreview}
+							aria-label="Toggle preview"
+						>
+							{showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+						</Toggle>
 					</div>
 				</div>
 			</header>
 
-			{/* Main Content */}
-			<div className={`flex-1 flex h-[calc(100vh-80px)] ${showPreview ? 'flex-col md:flex-row' : ''}`}>
-				{/* Editor Panel */}
-				<div className={`${showPreview ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'} p-2 md:p-4`}>
-					<div className="frappe-card h-full fade-in">
-						<div className="p-3 md:p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
-							<h2 className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-								✏️ Editor
-							</h2>
-						</div>
-						<div className="editor-container relative p-2 md:p-4 h-[calc(100%-50px)] md:h-[calc(100%-60px)]">
-							<textarea
-								ref={textareaRef}
-								value={content}
-								onChange={handleContentChange}
-								onKeyUp={handleCursorMove}
-								onMouseUp={handleCursorMove}
-								onFocus={handleCursorMove}
-								className="frappe-textarea h-full"
-								placeholder="# Start typing your markdown here...\n\nThis is a **collaborative** editor. Others can see your cursor and selections in real-time!"
-								style={{ minHeight: '100%' }}
-							/>
+			<div className={`flex-1 flex h-[calc(100vh-56px)] ${showPreview ? 'flex-col md:flex-row' : ''}`}>
+				<div className={`${showPreview ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'} p-4`}>
+					<Card className="h-full">
+						<CardHeader>
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Editor
+							</CardTitle>
+						</CardHeader>
+						<CardContent className="p-0 h-[calc(100%-60px)]">
+							<div className="editor-container relative p-4 h-full">
+								<textarea
+									ref={textareaRef}
+									value={content}
+									onChange={handleContentChange}
+									onKeyUp={handleCursorMove}
+									onMouseUp={handleCursorMove}
+									onFocus={handleCursorMove}
+									onSelect={handleSelection}
+									onScroll={handleCursorMove}
+									className="w-full h-full resize-none border-0 bg-transparent focus:outline-none focus:ring-0"
+									placeholder="Start typing your markdown here..."
+									style={{
+										fontFamily: 'JetBrains Mono, Fira Code, Monaco, Cascadia Code, monospace',
+										fontSize: '14px',
+										lineHeight: '1.6'
+									}}
+								/>
+							
+								{Object.values(cursors)
+									.filter(cursor => cursor.userId !== socket?.id)
+									.map(cursor => {
+										const { top, left } = getCursorPosition(cursor.position);
+										const hasSelection = cursor.selectionStart !== undefined && 
+											cursor.selectionEnd !== undefined && 
+											cursor.selectionStart !== cursor.selectionEnd;
 
-							{/* Render other users' cursors and selections */}
-							{cursors
-								.filter(cursor => cursor.userId !== socket?.id)
-								.map(cursor => {
-									const { top, left } = getCursorPosition(cursor.position);
-									const hasSelection = cursor.selectionStart !== undefined &&
-										cursor.selectionEnd !== undefined &&
-										cursor.selectionStart !== cursor.selectionEnd;
+										return (
+											<div key={cursor.userId}>
+												{hasSelection && cursor.selectionStart !== undefined && cursor.selectionEnd !== undefined && (
+													<>
+														{getSelectionRects(cursor.selectionStart, cursor.selectionEnd).map((rect, index) => (
+															<div
+																key={`selection-${cursor.userId}-${index}`}
+																className="absolute pointer-events-none"
+																style={{
+																	top: `${rect.top}px`,
+																	left: `${rect.left}px`,
+																	width: `${rect.width}px`,
+																	height: `${rect.height}px`,
+																	backgroundColor: `${cursor.userColor}30`,
+																	border: `1px solid ${cursor.userColor}60`,
+																	borderRadius: '2px',
+																	zIndex: 1
+																}}
+															/>
+														))}
+													</>
+												)}
 
-									return (
-										<div key={cursor.userId}>
-											{/* Render text selection */}
-											{hasSelection && cursor.selectionStart !== undefined && cursor.selectionEnd !== undefined && (
-												<>
-													{getSelectionRects(cursor.selectionStart, cursor.selectionEnd).map((rect, index) => (
-														<div
-															key={`selection-${cursor.userId}-${index}`}
-															className="user-selection"
-															style={{
-																top: `${Math.max(0, rect.top)}px`,
-																left: `${Math.max(0, rect.left)}px`,
-																width: `${Math.max(2, rect.width)}px`,
-																height: `${Math.max(1, rect.height)}px`,
-																backgroundColor: cursor.userColor,
-																borderColor: cursor.userColor,
-																opacity: 0.2,
-																zIndex: 5,
-																maxWidth: '100%',
-																maxHeight: '100%'
-															}}
-														/>
-													))}
-												</>
-											)}
-
-											{/* Render cursor */}
-											<div
-												className="cursor-indicator"
-												style={{
-													top: `${top}px`,
-													left: `${left}px`,
-													backgroundColor: cursor.userColor
-												}}
-											/>
-											<div
-												className="cursor-label"
-												style={{
-													top: `${top - 25}px`,
-													left: `${left}px`,
-													backgroundColor: cursor.userColor
-												}}
-											>
-												{cursor.userName}
+												<div
+													className="absolute pointer-events-none"
+													style={{
+														top: `${top}px`,
+														left: `${left}px`,
+														width: '2px',
+														height: '20px',
+														backgroundColor: cursor.userColor,
+														zIndex: 2
+													}}
+												/>
+												<div
+													className="absolute pointer-events-none text-xs px-2 py-1 rounded text-white whitespace-nowrap"
+													style={{
+														top: `${top - 25}px`,
+														left: `${left}px`,
+														backgroundColor: cursor.userColor,
+														fontSize: '11px',
+														zIndex: 3
+													}}
+												>
+													{cursor.userName}
+												</div>
 											</div>
-										</div>
-									);
-								})}
-						</div>
-					</div>
+										);
+									})}
+							</div>
+						</CardContent>
+					</Card>
 				</div>
 
-				{/* Preview Panel */}
 				{showPreview && (
-					<div className="w-full md:w-1/2 h-1/2 md:h-full p-2 md:p-4">
-						<div className="frappe-card h-full fade-in">
-							<div className="p-3 md:p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
-								<h2 className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-									👁️ Preview
-								</h2>
-							</div>
-							<div className="p-3 md:p-4 h-[calc(100%-50px)] md:h-[calc(100%-60px)] overflow-y-auto">
+					<div className="w-full md:w-1/2 h-1/2 md:h-full p-4">
+						<Card className="h-full">
+							<CardHeader className="pb-3">
+								<CardTitle className="text-sm font-medium text-muted-foreground">
+									Preview
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="p-4 h-[calc(100%-60px)] overflow-y-auto">
 								<div
-									className="markdown-content prose prose-sm max-w-none"
-									style={{ color: 'var(--text-primary)' }}
+									className="markdown-content prose prose-sm max-w-none dark:prose-invert"
 									dangerouslySetInnerHTML={{ __html: getMarkdownHtml() }}
 								/>
-							</div>
-						</div>
+							</CardContent>
+						</Card>
 					</div>
 				)}
 			</div>

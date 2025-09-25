@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { v4 as uuidv4 } from 'uuid';
+import { Moon, Sun, Rocket, Link } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const userColors = [
 	'#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
@@ -12,22 +18,11 @@ const userColors = [
 export default function Home() {
 	const [userName, setUserName] = useState('');
 	const [sessionId, setSessionId] = useState('');
-	const [theme, setTheme] = useState('light');
+	const { theme, setTheme } = useTheme();
 	const router = useRouter();
 
-	useEffect(() => {
-		// Check for saved theme or system preference
-		const savedTheme = localStorage.getItem('theme') || 
-			(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-		setTheme(savedTheme);
-		document.documentElement.setAttribute('data-theme', savedTheme);
-	}, []);
-
 	const toggleTheme = () => {
-		const newTheme = theme === 'light' ? 'dark' : 'light';
-		setTheme(newTheme);
-		localStorage.setItem('theme', newTheme);
-		document.documentElement.setAttribute('data-theme', newTheme);
+		setTheme(theme === 'light' ? 'dark' : 'light');
 	};
 
 	const handleCreateSession = () => {
@@ -59,87 +54,80 @@ export default function Home() {
 	};
 
 	return (
-		<div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--bg-secondary)' }}>
-			<div className="frappe-card p-8 w-full max-w-md relative">
+		<div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+			<Card className="w-full max-w-md relative">
 				{/* Theme Toggle */}
-				<button
+				<Button
+					variant="ghost"
+					size="icon"
 					onClick={toggleTheme}
-					className="frappe-button frappe-button-secondary absolute top-4 right-4 p-2"
+					className="absolute top-4 right-4"
 					title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
 				>
-					{theme === 'light' ? '🌙' : '☀️'}
-				</button>
+					{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+				</Button>
 
-				<div className="text-center mb-8">
-					<h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-						Collaborative Markdown Editor
-					</h1>
-					<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-						Real-time collaboration with live cursors and preview
-					</p>
-				</div>
-				
-				<div className="space-y-6">
-					<div>
-						<label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-							Your Name
-						</label>
-						<input
+				<CardHeader className="text-center">
+					<CardTitle className="text-2xl font-bold">Collab-MD</CardTitle>
+					<CardDescription>Real-time collaborative markdown editing</CardDescription>
+				</CardHeader>
+
+				<CardContent className="space-y-6">
+					<div className="space-y-2">
+						<Label htmlFor="userName">Your Name</Label>
+						<Input
+							id="userName"
 							type="text"
 							value={userName}
 							onChange={(e) => setUserName(e.target.value)}
-							className="frappe-input"
 							placeholder="Enter your name"
 							onKeyPress={(e) => e.key === 'Enter' && handleCreateSession()}
 						/>
 					</div>
 					
-					<button
+					<Button
 						onClick={handleCreateSession}
-						className="frappe-button frappe-button-primary w-full py-3 text-base font-medium"
+						className="w-full"
+						size="lg"
 					>
-						🚀 Create New Session
-					</button>
+						<Rocket className="mr-2 h-4 w-4" />
+						Create New Session
+					</Button>
 					
 					<div className="relative">
 						<div className="absolute inset-0 flex items-center">
-							<div className="w-full border-t" style={{ borderColor: 'var(--border-primary)' }} />
+							<span className="w-full border-t" />
 						</div>
-						<div className="relative flex justify-center text-sm">
-							<span className="px-3" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+						<div className="relative flex justify-center text-xs uppercase">
+							<span className="bg-background px-2 text-muted-foreground">
 								or join existing
 							</span>
 						</div>
 					</div>
 					
-					<div>
-						<label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-							Session ID
-						</label>
-						<input
+					<div className="space-y-2">
+						<Label htmlFor="sessionId">Session ID</Label>
+						<Input
+							id="sessionId"
 							type="text"
 							value={sessionId}
 							onChange={(e) => setSessionId(e.target.value)}
-							className="frappe-input"
-							placeholder="Enter session ID to join"
+							placeholder="Enter session ID"
 							onKeyPress={(e) => e.key === 'Enter' && handleJoinSession()}
 						/>
 					</div>
 					
-					<button
+					<Button
 						onClick={handleJoinSession}
-						className="frappe-button frappe-button-secondary w-full py-3 text-base font-medium"
+						variant="outline"
+						className="w-full"
+						size="lg"
 					>
-						🔗 Join Session
-					</button>
-				</div>
-
-				<div className="mt-8 text-center">
-					<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-						Built with Next.js, Socket.io & ❤️
-					</p>
-				</div>
-			</div>
+						<Link className="mr-2 h-4 w-4" />
+						Join Session
+					</Button>
+				</CardContent>
+			</Card>
 		</div>
 	);
 }
